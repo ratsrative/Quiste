@@ -1,54 +1,46 @@
+# Import libraries
 import streamlit as st
-from datetime import datetime
-import smtplib
 import pandas as pd
+import datetime
+import sqlite3 as sql
 
-# Create dataframe for storing event data
-df = pd.DataFrame(columns=['event_name', 'event_date', 'event_notes'])
+# Connect to SQLite database or create it if not exist
+con = sql.connect('garba_sessions.db')
 
-# SMTP setup
-smtp_server = smtplib.SMTP('localhost')
+# Create tables if not exist
+con.execute('CREATE TABLE IF NOT EXISTS events (title TEXT, date TEXT, note TEXT)')
 
-def send_email(msg, receiver_email):
-    # Add your own secure data for using SMTP
-    sender_email = ""  # ENTER YOUR SENDER EMAIL HERE
-    password = ""  # ENTER YOUR SENDER EMAIL'S PASSWORD HERE
+def add_event(title, date, note):
+    con.execute('INSERT INTO events (title, date, note) VALUES (?, ?, ?)', (title, date, note))
+    con.commit()
 
-    message = 'Subject: {}\n\n{}'.format('Garba Reminder', msg)
-    smtp_server.login(sender_email, password)
-    smtp_server.sendmail(sender_email, receiver_email, message)
+def view_all_events():
+    return pd.read_sql('SELECT * FROM events', con)
 
-############# Navigation between pages #############
-page = st.sidebar.selectbox("Choose a page", ['Dashboard', 'Add event', 'Calendar', 'Send Email'])
+def app():
+    st.title("Garba Sessions and Events")
 
-# Page routing
-if page == 'Dashboard':
-    st.title('Upcoming Sessions and Events')
-    st.table(df[df['event_date']>datetime.now()].sort_values(by='event_date'))
+    # Add event
+    with st.form("new_event_form"):
+        st.subheader("Add New Event")
+        title_field = st.text_input("Event title")
+        date_field = st.date_input("Event Date")
+        note_field = st.text_area("Event Notes")
+        submit_button = st.form_submit_button("Add Event")
+        if submit_button:
+            add_event(title_field, date_field, note_field)
 
-elif page == 'Add event':
-    st.title("Add a new event")
-    event_name = st.text_input("Event Name")
-    event_date = st.date_input("Event Date")
-    event_notes = st.text_area("Event Notes")
+    # View events
+    st.subheader("Upcoming Events")
+    events_df = view_all_events()
+    st.dataframe(events_df)
 
-    add_event = st.button('Add event')
+    # Select a single event
+    event_selectbox = st.selectbox("Select an Event to View/Update Note", events_df['title'])
+    selected_event = events_df[events_df['title'] == event_selectbox].iloc[0]
+    st.write("Event Date:", selected_event['date'])
+    st.write("Event Note:")
+    st.text_area("", value=selected_event['note'])
 
-    if add_event:
-        df = df.append({'event_name': event_name, 
-                        'event_date': event_date, 
-                        'event_notes': event_notes}, 
-                        ignore_index=True)
-        df.to_csv('events.csv')
-
-elif page == 'Calendar':
-    st.title('Calendar')
-    # Display calendar with events
-
-elif page == 'Send Email':
-    st.title('Send Email')
-    msg = st.text_area("Enter your message")
-    receiver_email = st.text_input("Receiver Email")
-    if st.button('Send Email'):
-        send_email(msg, receiver_email)
-        st.success('Email sent')
+if __name__ == "__main__":
+    app()
